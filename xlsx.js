@@ -4,7 +4,7 @@
 /*jshint funcscope:true, eqnull:true */
 var XLSX = {};
 (function make_xlsx(XLSX){
-XLSX.version = '0.8.11';
+XLSX.version = '0.8.13';
 var current_codepage = 1200, current_cptable;
 if(typeof module !== "undefined" && typeof require !== 'undefined') {
 	if(typeof cptable === 'undefined') cptable = require('./dist/cpexcel');
@@ -1305,8 +1305,18 @@ function getdata(data) {
 		if(data._data && data._data.getContent) return Array.prototype.slice.call(data._data.getContent());
 	} else {
 		if(data.data) return data.name.substr(-4) !== ".bin" ? debom_xml(data.data) : char_codes(data.data);
-		if(data.asNodeBuffer && has_buf) return debom_xml(data.asNodeBuffer().toString('binary'));
-		if(data.asBinary) return debom_xml(data.asBinary());
+		if(data.asNodeBuffer && has_buf) {
+			data.async().then(function (binData){
+				return debom_xml(binData);	
+			});
+			
+		} 
+		if(data.asBinary){
+			data.async().then(function (binData){
+				return debom_xml(binData);	
+			});
+			
+		} 
 		if(data._data && data._data.getContent) return debom_xml(cc2str(Array.prototype.slice.call(data._data.getContent(),0)));
 	}
 	return null;
@@ -7595,6 +7605,20 @@ function parse_ws_xml(data, opts, rels) {
 	return s;
 }
 
+function write_ws_xml_sheetpr(sheetpr) {
+	if(sheetpr.length == 0) return "";
+	var o = '<sheetPr>';
+	for(var i in sheetpr) {
+    for(var j in sheetpr[i]){
+      o += '<' + j;
+      for(var k in sheetpr[i][j])
+        o += ' ' + k + '="' + sheetpr[i][j][k] + '"';
+      o += '/>'
+    }
+  }
+	return o + '</sheetPr>';
+}
+
 function write_ws_xml_merges(merges) {
 	if(merges.length == 0) return "";
 	var o = '<mergeCells count="' + merges.length + '">';
@@ -7836,6 +7860,7 @@ function write_ws_xml(idx, opts, wb) {
 	var s = wb.SheetNames[idx], sidx = 0, rdata = "";
 	var ws = wb.Sheets[s];
 	if(ws === undefined) ws = {};
+	if(ws['!sheetPr'] !== undefined && ws['!sheetPr'].length > 0) o[o.length] = (write_ws_xml_sheetpr(ws['!sheetPr']));
 	var ref = ws['!ref']; if(ref === undefined) ref = 'A1';
 	o[o.length] = (writextag('dimension', null, {'ref': ref}));
 
@@ -8579,23 +8604,19 @@ function write_wb_xml(wb, opts) {
     for(var i = 0; i != wb.SheetNames.length; ++i) {
       var sheetName = wb.SheetNames[i];
       var sheet = wb.Sheets[sheetName]
-      if (sheet['!printHeader'])
-        var range = "'" + sheetName + "'!" + sheet['!printHeader'];
-      console.log("!!!!"+range)
+      if (sheet['!printHeader']) {
+          var printHeader = sheet['!printHeader'];
+
+        var range = "'" + sheetName + "'!$" + printHeader[0] + ":$" + printHeader[1];
+
         o[o.length] = (writextag('definedName', range, {
           "name":"_xlnm.Print_Titles",
           localSheetId : ''+i
         }))
     }
+    }
     o[o.length] = '</definedNames>';
   }
-
-
-
-//  <definedNames>
-//  <definedName name="_xlnm.Print_Titles" localSheetId="0">Sheet1!$1:$1</definedName>
-//  <definedName name="_xlnm.Print_Titles" localSheetId="1">Sheet2!$1:$2</definedName>
-//  </definedNames>
 
 	if(o.length>2){ o[o.length] = '</workbook>'; o[1]=o[1].replace("/>",">"); }
 	return o.join("");
@@ -11637,6 +11658,7 @@ function add_rels(rels, rId, f, type, relobj) {
 }
 
 function write_zip(wb, opts) {
+	/*
 	if(wb && !wb.SSF) {
 		wb.SSF = SSF.get_table();
 	}
@@ -11657,62 +11679,77 @@ function write_zip(wb, opts) {
 	opts.cellXfs = [];
 	get_cell_style(opts.cellXfs, {}, {revssf:{"General":0}});
 
-	f = "docProps/core.xml";
-	zip.file(f, write_core_props(wb.Props, opts));
+	f = "core.xml";
+	var docPropsFolder = zip.folder("docProps");
+	docPropsFolder.file(f, write_core_props(wb.Props, opts));
 	ct.coreprops.push(f);
 	add_rels(opts.rels, 2, f, RELS.CORE_PROPS);
 
-	f = "docProps/app.xml";
+	f = "app.xml";
 	if(!wb.Props) wb.Props = {};
 	wb.Props.SheetNames = wb.SheetNames;
 	wb.Props.Worksheets = wb.SheetNames.length;
-	zip.file(f, write_ext_props(wb.Props, opts));
+	docPropsFolder.file(f, write_ext_props(wb.Props, opts));
 	ct.extprops.push(f);
 	add_rels(opts.rels, 3, f, RELS.EXT_PROPS);
 
 	if(wb.Custprops !== wb.Props && keys(wb.Custprops||{}).length > 0) {
-		f = "docProps/custom.xml";
-		zip.file(f, write_cust_props(wb.Custprops, opts));
+		f = "custom.xml";
+		docPropsFolder.file(f, write_cust_props(wb.Custprops, opts));
 		ct.custprops.push(f);
 		add_rels(opts.rels, 4, f, RELS.CUST_PROPS);
 	}
-
-	f = "xl/workbook." + wbext;
-	zip.file(f, write_wb(wb, f, opts));
+	var xlFolder = zip.folder("xl");
+	f = "workbook." + wbext;
+	xlFolder.file(f, write_wb(wb, f, opts));
 	ct.workbooks.push(f);
 	add_rels(opts.rels, 1, f, RELS.WB);
 
+	var worksheetsXlFolder = xlFolder.folder("worksheets");
 	for(rId=1;rId <= wb.SheetNames.length; ++rId) {
-		f = "xl/worksheets/sheet" + rId + "." + wbext;
-		zip.file(f, write_ws(rId-1, f, opts, wb));
+		f = "sheet" + rId + "." + wbext;
+		worksheetsXlFolder.file(f, write_ws(rId-1, f, opts, wb));
 		ct.sheets.push(f);
 		add_rels(opts.wbrels, rId, "worksheets/sheet" + rId + "." + wbext, RELS.WS);
 	}
 
 	if(opts.Strings != null && opts.Strings.length > 0) {
-		f = "xl/sharedStrings." + wbext;
-		zip.file(f, write_sst(opts.Strings, f, opts));
+		f = "sharedStrings." + wbext;
+		xlFolder.file(f, write_sst(opts.Strings, f, opts));
 		ct.strs.push(f);
 		add_rels(opts.wbrels, ++rId, "sharedStrings." + wbext, RELS.SST);
 	}
 
-	/* TODO: something more intelligent with themes */
-
-	f = "xl/theme/theme1.xml";
-  zip.file(f, write_theme(opts));
+	
+	var xlThemeFolder = xlFolder.folder("theme");
+	f = "theme1.xml";
+  	xlThemeFolder.file(f, write_theme(opts));
 	ct.themes.push(f);
 	add_rels(opts.wbrels, ++rId, "theme/theme1.xml", RELS.THEME);
 
-	/* TODO: something more intelligent with styles */
+	
 
 	f = "xl/styles." + wbext;
-	zip.file(f, write_sty(wb, f, opts));
+	xlFolder.file(f, write_sty(wb, f, opts));
 	ct.styles.push(f);
 	add_rels(opts.wbrels, ++rId, "styles." + wbext, RELS.STY);
 
 	zip.file("[Content_Types].xml", write_ct(ct, opts));
-	zip.file('_rels/.rels', write_rels(opts.rels));
-	zip.file('xl/_rels/workbook.' + wbext + '.rels', write_rels(opts.wbrels));
+	var uscoreRelsFolder = zip.folder("_rels");
+	uscoreRelsFolder.file('.rels', write_rels(opts.rels));
+	var uscoreRelsXLFolder = xlFolder.folder("_rels");
+	uscoreRelsXLFolder.file('xl/_rels/workbook.' + wbext + '.rels', write_rels(opts.wbrels));
+*/
+
+var zip = new JSZip();
+zip.file("Hello.txt", "Hello World\n");
+var img = zip.folder("images");
+img.file("smile.gif", "Hello World\n");
+zip.generateAsync({type:"blob"})
+.then(function (blob) {
+    saveAs(blob, "hello.zip");
+});
+
 	return zip;
 }
 function firstbyte(f,o) {
@@ -11726,17 +11763,34 @@ function firstbyte(f,o) {
 }
 
 function read_zip(data, opts) {
-	var zip, d = data;
+	var d = data;
 	var o = opts||{};
 	if(!o.type) o.type = (has_buf && Buffer.isBuffer(data)) ? "buffer" : "base64";
+	var zip = new JSZip();
 	switch(o.type) {
-		case "base64": zip = new jszip(d, { base64:true }); break;
-		case "binary": case "array": zip = new jszip(d, { base64:false }); break;
-		case "buffer": zip = new jszip(d); break;
-		case "file": zip=new jszip(d=_fs.readFileSync(data)); break;
+		case "base64": 
+			zip.loadAsync(d, { base64:true }).then(function () {
+        			return parse_zip(zip, o);
+    		}); 
+			break;
+		case "binary": case "array": 
+			zip.loadAsync(d, { base64:false }).then(function () {
+        			return parse_zip(zip, o);
+    		}); 
+			break;
+		case "buffer": 
+			zip.loadAsync(d).then(function () {
+        			return parse_zip(zip, o);
+    		}); 
+			break;
+		case "file": 
+			zip.loadAsync(d=_fs.readFileSync(data)).then(function () {
+        			return parse_zip(zip, o);
+    		}); 
+			break;
 		default: throw new Error("Unrecognized type " + o.type);
 	}
-	return parse_zip(zip, o);
+
 }
 
 function readSync(data, opts) {
