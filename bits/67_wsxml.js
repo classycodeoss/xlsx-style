@@ -9,7 +9,11 @@ var dimregex = /"(\w*:\w*)"/;
 var colregex = /<col[^>]*\/>/g;
 /* 18.3 Worksheets */
 function parse_ws_xml(data, opts, rels) {
-	if(!data) return data;
+	console.debug(`parse_ws_xml data: ${data}, opts: ${opts}, rels: ${rels}`);
+	if(!data) {
+		console.warn(`parse_ws_xml returning, no data to process`);
+		return data;
+	}
 	/* 18.3.1.99 worksheet CT_Worksheet */
 	var s = {};
 
@@ -60,6 +64,7 @@ function parse_ws_xml(data, opts, rels) {
 	}
 	if(mergecells.length > 0) s["!merges"] = mergecells;
 	if(columns.length > 0) s["!cols"] = columns;
+	console.debug(`parse_ws_xml finished`);
 	return s;
 }
 

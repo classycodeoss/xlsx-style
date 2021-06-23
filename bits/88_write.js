@@ -48,6 +48,6 @@ function writeFileSync(wb, filename, opts) {
 		case '.xls': o.bookType = 'xls'; break;
 		case '.xml': o.bookType = 'xml'; break;
 	}}
-	return writeSync(wb, o, filename);
+	return writeAsync(wb, o, filename);
 }
 

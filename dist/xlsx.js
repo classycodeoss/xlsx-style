@@ -14,7 +14,9 @@ function reset_cp() { set_cp(1200); }
 var set_cp = function(cp) { current_codepage = cp; };
 
 function char_codes(data) { var o = []; for(var i = 0, len = data.length; i < len; ++i) o[i] = data.charCodeAt(i); return o; }
-var debom_xml = function(data) { return data; };
+var debom_xml = function(data) {
+	return data;
+};
 
 var _getchar = function _gc1(x) { return String.fromCharCode(x); };
 if(typeof cptable !== 'undefined') {
@@ -1298,57 +1300,98 @@ function cc2str(arr) {
 }
 
 function getdata(data) {
-	if(!data) return null;
-	if(data.name.substr(-4) === ".bin") {
-		if(data.data) return char_codes(data.data);
-		if(data.asNodeBuffer && has_buf) return data.asNodeBuffer();
-		if(data._data && data._data.getContent) return Array.prototype.slice.call(data._data.getContent());
-	} else {
-		if(data.data) return data.name.substr(-4) !== ".bin" ? debom_xml(data.data) : char_codes(data.data);
-		if(data.asNodeBuffer && has_buf) {
-			data.async().then(function (binData){
-				return debom_xml(binData);	
-			});
-			
-		} 
-		if(data.asBinary){
-			data.async().then(function (binData){
-				return debom_xml(binData);	
-			});
-			
-		} 
-		if(data._data && data._data.getContent) return debom_xml(cc2str(Array.prototype.slice.call(data._data.getContent(),0)));
-	}
-	return null;
+    return new Promise(((resolve, reject) => {
+        if (!data) {
+            resolve();
+        }
+        if (data.name.substr(-4) === ".bin") {
+            if (data.data) {
+                resolve(char_codes(data.data));
+            }
+            if (data.asNodeBuffer && has_buf) {
+                resolve(data.asNodeBuffer());
+            }
+            if (data._data && data._data.getContent) {
+                resolve(Array.prototype.slice.call(data._data.getContent()));
+            }
+        } else {
+            if (data.data) {
+                resolve(data.name.substr(-4) !== ".bin" ? debom_xml(data.data) : char_codes(data.data));
+            } else if (data.asNodeBuffer && has_buf) {
+                data.async()
+                    .then(binData => resolve(debom_xml(binData)))
+                    .catch(error => {
+                        console.error(`xlsx-style getData(nodebuffer) received error:\n${error}`);
+                        reject(error);
+                    });
+            } else if (data.asBinary) {
+                data.async("string")
+                    .then(binData => resolve(debom_xml(binData)))
+                    .catch(error => {
+                        console.error(`xlsx-style getData(string) received error:\n${error}`);
+                        reject(error);
+                        }
+                    );
+            } else if (data._data && data._data.getContent) {
+                resolve(debom_xml(cc2str(Array.prototype.slice.call(data._data.getContent(), 0))));
+            } else {
+                resolve();
+            }
+        }
+    }));
 }
 
 function safegetzipfile(zip, file) {
-	var f = file; if(zip.files[f]) return zip.files[f];
-	f = file.toLowerCase(); if(zip.files[f]) return zip.files[f];
-	f = f.replace(/\//g,'\\'); if(zip.files[f]) return zip.files[f];
-	return null;
+    var f = file;
+    if (zip.files[f]) return zip.files[f];
+    f = file.toLowerCase();
+    if (zip.files[f]) return zip.files[f];
+    f = f.replace(/\//g, '\\');
+    if (zip.files[f]) return zip.files[f];
+    return null;
 }
 
 function getzipfile(zip, file) {
-	var o = safegetzipfile(zip, file);
-	if(o == null) throw new Error("Cannot find file " + file + " in zip");
-	return o;
+    var o = safegetzipfile(zip, file);
+    if (o == null){
+        throw new Error("Cannot find file " + file + " in zip");
+    }
+    return o;
 }
 
 function getzipdata(zip, file, safe) {
-	if(!safe) return getdata(getzipfile(zip, file));
-	if(!file) return null;
-	try { return getzipdata(zip, file); } catch(e) { return null; }
+    return new Promise(resolve => {
+        if (!safe) {
+            var zipFile;
+            try{
+                zipFile =getzipfile(zip, file);
+                resolve(getdata(zipFile));
+            } catch(error){
+                console.warn(`.getzipdata() file: ${file} error:\n${error}`);
+                resolve(null);
+            }
+
+        } else if (!file) {
+            resolve(null);
+        } else {
+            try {
+                resolve(getzipdata(zip, file));
+            } catch (e) {
+                resolve(null);
+            }
+        }
+    });
+
 }
 
 var _fs, jszip;
-if(typeof JSZip !== 'undefined') jszip = JSZip;
+if (typeof JSZip !== 'undefined') jszip = JSZip;
 if (typeof exports !== 'undefined') {
-	if (typeof module !== 'undefined' && module.exports) {
-		if(has_buf && typeof jszip === 'undefined') jszip = require('js'+'zip');
-		if(typeof jszip === 'undefined') jszip = require('./js'+'zip').JSZip;
-		_fs = require('f'+'s');
-	}
+    if (typeof module !== 'undefined' && module.exports) {
+        if (has_buf && typeof jszip === 'undefined') jszip = require('js' + 'zip');
+        if (typeof jszip === 'undefined') jszip = require('./js' + 'zip').JSZip;
+        _fs = require('f' + 's');
+    }
 }
 var attregexg=/([\w:]+)=((?:")([^"]*)(?:")|(?:')([^']*)(?:'))/g;
 var tagregex=/<[^>]*>/g;
@@ -7551,7 +7594,11 @@ var dimregex = /"(\w*:\w*)"/;
 var colregex = /<col[^>]*\/>/g;
 /* 18.3 Worksheets */
 function parse_ws_xml(data, opts, rels) {
-	if(!data) return data;
+	console.debug(`parse_ws_xml data: ${data}, opts: ${opts}, rels: ${rels}`);
+	if(!data) {
+		console.warn(`parse_ws_xml returning, no data to process`);
+		return data;
+	}
 	/* 18.3.1.99 worksheet CT_Worksheet */
 	var s = {};
 
@@ -7602,6 +7649,7 @@ function parse_ws_xml(data, opts, rels) {
 	}
 	if(mergecells.length > 0) s["!merges"] = mergecells;
 	if(columns.length > 0) s["!cols"] = columns;
+	console.debug(`parse_ws_xml finished`);
 	return s;
 }
 
@@ -8586,10 +8634,10 @@ function write_wb_xml(wb, opts) {
 	o[o.length] = "</sheets>";
 
   var hasPrintHeaders = false;
-  for(var i = 0; i != wb.SheetNames.length; ++i) {
+  for(var i = 0; i !== wb.SheetNames.length; ++i) {
     var sheetName = wb.SheetNames[i];
-    var sheet = wb.Sheets[sheetName]
-    if (sheet['!printHeader']) {
+    var sheet = wb.Sheets[sheetName];
+    if (sheet && sheet['!printHeader']) {
       if (sheet['!printHeader'].length !== 2) {
         throw "!printHeaders must be an array of length 2: "+sheet['!printHeader'];
 
@@ -8601,10 +8649,10 @@ function write_wb_xml(wb, opts) {
 
   if (hasPrintHeaders) {
     o[o.length] = '<definedNames>';
-    for(var i = 0; i != wb.SheetNames.length; ++i) {
+    for(var i = 0; i !== wb.SheetNames.length; ++i) {
       var sheetName = wb.SheetNames[i];
-      var sheet = wb.Sheets[sheetName]
-      if (sheet['!printHeader']) {
+      var sheet = wb.Sheets[sheetName];
+      if (sheet && sheet['!printHeader']) {
           var printHeader = sheet['!printHeader'];
 
         var range = "'" + sheetName + "'!$" + printHeader[0] + ":$" + printHeader[1];
@@ -11505,146 +11553,281 @@ var fix_write_opts = fix_opts_func([
 	['WTF', false] /* WTF mode (throws errors) */
 ]);
 function safe_parse_wbrels(wbrels, sheets) {
-	if(!wbrels) return 0;
-	try {
-		wbrels = sheets.map(function pwbr(w) { return [w.name, wbrels['!id'][w.id].Target]; });
-	} catch(e) { return null; }
-	return !wbrels || wbrels.length === 0 ? null : wbrels;
+    if (!wbrels) return 0;
+    try {
+        wbrels = sheets.map(function pwbr(w) {
+            return [w.name, wbrels['!id'][w.id].Target];
+        });
+    } catch (e) {
+        return null;
+    }
+    return !wbrels || wbrels.length === 0 ? null : wbrels;
 }
 
 function safe_parse_ws(zip, path, relsPath, sheet, sheetRels, sheets, opts) {
-	try {
-		sheetRels[sheet]=parse_rels(getzipdata(zip, relsPath, true), path);
-		sheets[sheet]=parse_ws(getzipdata(zip, path),path,opts,sheetRels[sheet]);
-	} catch(e) { if(opts.WTF) throw e; }
+    return new Promise(resolve => {
+        console.log(`>>>>>>>> .safe_parse_ws(sheet: ${sheet})`);
+        getzipdata(zip, relsPath, true)
+            .then(data =>
+                sheetRels[sheet] = parse_rels(data, path))
+            .then(() =>
+                getzipdata(zip, path)
+                    .then(relData => {
+                        sheets[sheet] = parse_ws(relData, path, opts, sheetRels[sheet]);
+                        console.log(`sheets: ${sheets}`);
+                        console.log(`sheets[sheet]: ${sheets[sheet]}`);
+                    })
+            )
+            .then(() => {
+                console.log(`<<<<<<<< .safe_parse_ws(sheet: ${sheet})`);
+                resolve();
+            })
+            .catch(e => {
+                console.warn(`safe_parse_ws() error: ${e}`);
+                if (opts.WTF) {
+                    reject(e);
+                }
+            });
+    });
 }
 
-var nodirs = function nodirs(x){return x.substr(-1) != '/';};
+var nodirs = function nodirs(x) {
+    return x.substr(-1) != '/';
+};
+
+
+function prepareOut(out, dir, wb, props, custprops, deps, sheets, opts, entries, zip) {
+    out = {
+        Directory: dir,
+        Workbook: wb,
+        Props: props,
+        Custprops: custprops,
+        Deps: deps,
+        Sheets: sheets,
+        SheetNames: props.SheetNames,
+        Strings: strs,
+        Styles: styles,
+        Themes: themes,
+        SSF: SSF.get_table()
+    };
+    if (opts.bookFiles) {
+        out.keys = entries;
+        out.files = zip.files;
+    }
+    return out;
+}
+
 function parse_zip(zip, opts) {
-	make_ssf(SSF);
-	opts = opts || {};
-	fix_read_opts(opts);
-	reset_cp();
+    return new Promise((resolve, reject) => {
+        make_ssf(SSF);
+        opts = opts || {};
+        fix_read_opts(opts);
+        reset_cp();
 
-	/* OpenDocument Part 3 Section 2.2.1 OpenDocument Package */
-	if(safegetzipfile(zip, 'META-INF/manifest.xml')) return parse_ods(zip, opts);
+        /* OpenDocument Part 3 Section 2.2.1 OpenDocument Package */
+        if (safegetzipfile(zip, 'META-INF/manifest.xml')) resolve(parse_ods(zip, opts));
 
-	var entries = keys(zip.files).filter(nodirs).sort();
-	var dir = parse_ct(getzipdata(zip, '[Content_Types].xml'), opts);
-	var xlsb = false;
-	var sheets, binname;
-	if(dir.workbooks.length === 0) {
-		binname = "xl/workbook.xml";
-		if(getzipdata(zip,binname, true)) dir.workbooks.push(binname);
-	}
-	if(dir.workbooks.length === 0) {
-		binname = "xl/workbook.bin";
-		if(!getzipfile(zip,binname,true)) throw new Error("Could not find workbook");
-		dir.workbooks.push(binname);
-		xlsb = true;
-	}
-	if(dir.workbooks[0].substr(-3) == "bin") xlsb = true;
-	if(xlsb) set_cp(1200);
+        var entries = keys(zip.files).filter(nodirs).sort();
+        var dir;
+        var xlsb = false;
+        var binname, sheets;
+        var props = {}, propdata = "";
+        var custprops = {};
+        var out = {};
+        var deps = {};
+        var sheetRels = {};
+        var path, relsPath, wbrels, wbext, wbrelsfile, wb;
+        var asyncFuncs = [];
+        getzipdata(zip, '[Content_Types].xml')
+            .then(contentTypeData => {
+                dir = parse_ct(contentTypeData, opts);
 
-	if(!opts.bookSheets && !opts.bookProps) {
-		strs = [];
-		if(dir.sst) strs=parse_sst(getzipdata(zip, dir.sst.replace(/^\//,'')), dir.sst, opts);
+            })
+            .then(() => {
+                if (dir.workbooks.length === 0) {
+                    binname = "xl/workbook.xml";
+                    getzipdata(zip, binname, true).then(workBookData => {
+                        if (workBookData) {
+                            dir.workbooks.push(binname);
+                        }
+                    });
+                }
+                if (dir.workbooks.length === 0) {
+                    binname = "xl/workbook.bin";
+                    if (!getzipfile(zip, binname, true)) throw new Error("Could not find workbook");
+                    dir.workbooks.push(binname);
+                    xlsb = true;
+                }
+                if (dir.workbooks[0].substr(-3) == "bin") xlsb = true;
+                if (xlsb) set_cp(1200);
+            })
+            .then(() => {
+                if (!opts.bookSheets && !opts.bookProps) {
+                    strs = [];
+                    if (dir.sst) {
+                        getzipdata(zip, dir.sst.replace(/^\//, ''))
+                            .then(sstData => strs = parse_sst(sstData, dir.sst, opts));
+                    }
+                    // parse themes before styles so that we can reliably decode theme/tint into rgb when parsing styles
+                    themes = {};
+                    if (opts.cellStyles && dir.themes.length) {
+                        (getzipdata(zip, dir.themes[0].replace(/^\//, ''), true)
+                            .then(themesData => themes = parse_theme(themesData, true), dir.themes[0], opts));
+                    }
+                    styles = {};
+                    if (dir.style) {
+                        getzipdata(zip, dir.style.replace(/^\//, ''))
+                            .then(stylesData => styles = parse_sty(stylesData, dir.style, opts));
+                    }
+                }
+            })
+            .then(() =>
+                getzipdata(zip, dir.workbooks[0].replace(/^\//, ''))
+                    .then(workbookData => wb = parse_wb(workbookData, dir.workbooks[0], opts))
+            )
+            .then(() => {
+                if (dir.coreprops.length !== 0) {
+                    getzipdata(zip, dir.coreprops[0].replace(/^\//, ''), true)
+                        .then(corePropsData => propData = corePropsData)
+                        .then(() => {
+                            if (propdata) {
+                                props = parse_core_props(propdata);
+                            }
+                        })
+                        .then(() => {
+                            if (dir.extprops.length !== 0) {
+                                getzipdata(zip, dir.extprops[0].replace(/^\//, ''), true)
+                                    .then(extPropData => propData = extPropData)
+                                    .then(() => {
+                                        if (propdata) {
+                                            parse_ext_props(propdata, props);
+                                        }
+                                    });
+                            }
+                        });
+                }
+            })
+            .then(() => {
+                if (!opts.bookSheets || opts.bookProps) {
+                    if (dir.custprops.length !== 0) {
 
-    // parse themes before styles so that we can reliably decode theme/tint into rgb when parsing styles
-    themes = {};
-    if(opts.cellStyles && dir.themes.length) themes = parse_theme(getzipdata(zip, dir.themes[0].replace(/^\//,''), true),dir.themes[0], opts);
+                        getzipdata(zip, dir.custprops[0].replace(/^\//, ''), true).then(custPropsData => {
+                            propdata = custPropsData;
+                            if (propdata) {
+                                custprops = parse_cust_props(propdata, opts);
+                            }
+                        });
+                    }
+                }
+            })
+            .then(() => {
+                if (opts.bookSheets || opts.bookProps) {
+                    if (props.Worksheets && props.SheetNames.length > 0) {
+                        sheets = props.SheetNames;
+                        console.log(`...opts.bookSheets: sheets: ${sheets}`);
+                    } else if (wb.Sheets) sheets = wb.Sheets.map(function pluck(x) {
+                        return x.name;
+                    });
 
-    styles = {};
-		if(dir.style) styles = parse_sty(getzipdata(zip, dir.style.replace(/^\//,'')),dir.style, opts);
+                    if (opts.bookProps) {
+                        out.Props = props;
+                        out.Custprops = custprops;
+                    }
+                    if (typeof sheets !== 'undefined') {
+                        out.SheetNames = sheets;
+                    }
+                    if (opts.bookSheets ? out.SheetNames : opts.bookProps) {
+                        resolve(out);
+                    }
+                }
+                sheets = {};
+            })
+            .then(() => {
+                if (opts.bookDeps && dir.calcchain) {
+                    getzipdata(zip, dir.calcchain.replace(/^\//, '')
+                        .then(calcChainData => deps = parse_cc(calcChainData, dir.calcchain, opts)));
+                }
 
-	}
+            })
+            .then(res => deps = res)
+            .then(() => {
+                if (!props.Worksheets) {
+                    var wbsheets = wb.Sheets;
+                    props.Worksheets = wbsheets.length;
+                    props.SheetNames = [];
+                    for (var j = 0; j !== wbsheets.length; ++j) {
+                        props.SheetNames[j] = wbsheets[j].name;
+                    }
+                }
 
-	var wb = parse_wb(getzipdata(zip, dir.workbooks[0].replace(/^\//,'')), dir.workbooks[0], opts);
+                wbext = xlsb ? "bin" : "xml";
+                wbrelsfile = 'xl/_rels/workbook.' + wbext + '.rels';
+            })
+            .then(() => {
+                getzipdata(zip, wbrelsfile, true)
+                    .then(wbrelsFileData => wbrels = parse_rels(wbrelsFileData, wbrelsfile));
+            })
+            .then(() => {
+                if (wbrels) {
+                    wbrels = safe_parse_wbrels(wbrels, wb.Sheets);
+                }
+            })
+            .then(() =>
+                /* Numbers iOS hack */
+                getzipdata(zip, "xl/worksheets/sheet.xml", true)
+                    .then(sheetXmlData => {
+                        console.log(`ioshack: ${sheetXmlData}`);
+                        var nmode = 0;
+                        if (sheetXmlData) {
+                            nmode = 1;
+                        }
+                        for (i = 0; i !== props.Worksheets; ++i) {
+                            if (wbrels) {
+                                path = 'xl/' + (wbrels[i][1]).replace(/[\/]?xl\//, "");
+                            } else {
+                                path = 'xl/worksheets/sheet' + (i + 1 - nmode) + "." + wbext;
+                                path = path.replace(/sheet0\./, "sheet.");
+                            }
+                            relsPath = path.replace(/^(.*)(\/)([^\/]*)$/, "$1/_rels/$3.rels");
+                            asyncFuncs.push(safe_parse_ws(zip, path, relsPath, props.SheetNames[i], sheetRels, sheets, opts));
+                        }
+                        console.log(`all functions pushed\n\n`);
+                    })
+            )
+            .then(() => {
+                console.log('starting to execute async functions');
+               return Promise.all(asyncFuncs)
+                    .then(() => {
+                        console.log('\n\t\t>>>>>promise.all done\n');
+                    });
+            })
+            .then(() => {
+                console.log('started with prepareOut, this should only after promise.all done!!!!\n\n');
+                if (dir.comments) parse_comments(zip, dir.comments, sheets, sheetRels, opts);
 
-	var props = {}, propdata = "";
-
-	if(dir.coreprops.length !== 0) {
-		propdata = getzipdata(zip, dir.coreprops[0].replace(/^\//,''), true);
-		if(propdata) props = parse_core_props(propdata);
-		if(dir.extprops.length !== 0) {
-			propdata = getzipdata(zip, dir.extprops[0].replace(/^\//,''), true);
-			if(propdata) parse_ext_props(propdata, props);
-		}
-	}
-
-	var custprops = {};
-	if(!opts.bookSheets || opts.bookProps) {
-		if (dir.custprops.length !== 0) {
-			propdata = getzipdata(zip, dir.custprops[0].replace(/^\//,''), true);
-			if(propdata) custprops = parse_cust_props(propdata, opts);
-		}
-	}
-
-	var out = {};
-	if(opts.bookSheets || opts.bookProps) {
-		if(props.Worksheets && props.SheetNames.length > 0) sheets=props.SheetNames;
-		else if(wb.Sheets) sheets = wb.Sheets.map(function pluck(x){ return x.name; });
-		if(opts.bookProps) { out.Props = props; out.Custprops = custprops; }
-		if(typeof sheets !== 'undefined') out.SheetNames = sheets;
-		if(opts.bookSheets ? out.SheetNames : opts.bookProps) return out;
-	}
-	sheets = {};
-
-	var deps = {};
-	if(opts.bookDeps && dir.calcchain) deps=parse_cc(getzipdata(zip, dir.calcchain.replace(/^\//,'')),dir.calcchain,opts);
-
-	var i=0;
-	var sheetRels = {};
-	var path, relsPath;
-	if(!props.Worksheets) {
-		var wbsheets = wb.Sheets;
-		props.Worksheets = wbsheets.length;
-		props.SheetNames = [];
-		for(var j = 0; j != wbsheets.length; ++j) {
-			props.SheetNames[j] = wbsheets[j].name;
-		}
-	}
-
-	var wbext = xlsb ? "bin" : "xml";
-	var wbrelsfile = 'xl/_rels/workbook.' + wbext + '.rels';
-	var wbrels = parse_rels(getzipdata(zip, wbrelsfile, true), wbrelsfile);
-	if(wbrels) wbrels = safe_parse_wbrels(wbrels, wb.Sheets);
-	/* Numbers iOS hack */
-	var nmode = (getzipdata(zip,"xl/worksheets/sheet.xml",true))?1:0;
-	for(i = 0; i != props.Worksheets; ++i) {
-		if(wbrels) path = 'xl/' + (wbrels[i][1]).replace(/[\/]?xl\//, "");
-		else {
-			path = 'xl/worksheets/sheet'+(i+1-nmode)+"." + wbext;
-			path = path.replace(/sheet0\./,"sheet.");
-		}
-		relsPath = path.replace(/^(.*)(\/)([^\/]*)$/, "$1/_rels/$3.rels");
-		safe_parse_ws(zip, path, relsPath, props.SheetNames[i], sheetRels, sheets, opts);
-	}
-
-	if(dir.comments) parse_comments(zip, dir.comments, sheets, sheetRels, opts);
-
-	out = {
-		Directory: dir,
-		Workbook: wb,
-		Props: props,
-		Custprops: custprops,
-		Deps: deps,
-		Sheets: sheets,
-		SheetNames: props.SheetNames,
-		Strings: strs,
-		Styles: styles,
-		Themes: themes,
-		SSF: SSF.get_table()
-	};
-	if(opts.bookFiles) {
-		out.keys = entries;
-		out.files = zip.files;
-	}
-	if(opts.bookVBA) {
-		if(dir.vba.length > 0) out.vbaraw = getzipdata(zip,dir.vba[0],true);
-		else if(dir.defaults.bin === 'application/vnd.ms-office.vbaProject') out.vbaraw = getzipdata(zip,'xl/vbaProject.bin',true);
-	}
-	return out;
+                // all out.* data needs to be ready here
+                out = prepareOut(out, dir, wb, props, custprops, deps, sheets, opts, entries, zip);
+                console.log(`prepareOut done!!!!`);
+            })
+            .then(() => {
+                console.log('started with opts bookVBA, this should only after promise.all done!!!!\n\n');
+                if (opts.bookVBA) {
+                    if (dir.vba.length > 0) {
+                        getzipdata(zip, dir.vba[0], true).then(vbaData => out.vbaraw = vbaData);
+                    } else if (dir.defaults.bin === 'application/vnd.ms-office.vbaProject') {
+                        getzipdata(zip, 'xl/vbaProject.bin', true).then(vbaData => out.vbaraw = vbaData);
+                    }
+                }
+            })
+            .then(() => {
+                console.log('xlsx-style .parse_zip() finishing, resolving out');
+                resolve(out);
+            })
+            .catch(error => {
+                console.error(`xlsx-style .parse_zip() encountered error:\n${error}\n`);
+                reject(error);
+            });
+    });
 }
 function add_rels(rels, rId, f, type, relobj) {
 	if(!relobj) relobj = {};
@@ -11737,70 +11920,121 @@ function write_zip(wb, opts) {
 	zip.file('xl/_rels/workbook.' + wbext + '.rels', write_rels(opts.wbrels));
 	return zip;
 }
-function firstbyte(f,o) {
-	switch((o||{}).type || "base64") {
-		case 'buffer': return f[0];
-		case 'base64': return Base64.decode(f.substr(0,12)).charCodeAt(0);
-		case 'binary': return f.charCodeAt(0);
-		case 'array': return f[0];
-		default: throw new Error("Unrecognized type " + o.type);
-	}
+function firstbyte(f, o) {
+    switch ((o || {}).type || "base64") {
+        case 'buffer':
+            return f[0];
+        case 'base64':
+            return Base64.decode(f.substr(0, 12)).charCodeAt(0);
+        case 'binary':
+            return f.charCodeAt(0);
+        case 'array':
+            return f[0];
+        default:
+            throw new Error("Unrecognized type " + o.type);
+    }
 }
 
 function read_zip(data, opts) {
-	var d = data;
-	var o = opts||{};
-	if(!o.type) o.type = (has_buf && Buffer.isBuffer(data)) ? "buffer" : "base64";
-	var zip = new JSZip();
-	switch(o.type) {
-		case "base64": 
-			zip.loadAsync(d, { base64:true }).then(function () {
-        			return parse_zip(zip, o);
-    		}); 
-			break;
-		case "binary": case "array": 
-			zip.loadAsync(d, { base64:false }).then(function () {
-        			return parse_zip(zip, o);
-    		}); 
-			break;
-		case "buffer": 
-			zip.loadAsync(d).then(function () {
-        			return parse_zip(zip, o);
-    		}); 
-			break;
-		case "file": 
-			zip.loadAsync(d=_fs.readFileSync(data)).then(function () {
-        			return parse_zip(zip, o);
-    		}); 
-			break;
-		default: throw new Error("Unrecognized type " + o.type);
-	}
-
+    console.log(`read_zip() started`);
+    var d = data;
+    var o = opts || {};
+    if (!o.type) {
+        o.type = (has_buf && Buffer.isBuffer(data)) ? "buffer" : "base64";
+    }
+    return new Promise(((resolve, reject) => {
+        var zip = new JSZip();
+        switch (o.type) {
+            case "base64":
+                zip.loadAsync(d, {base64: true})
+                    .then(() =>
+                        parse_zip(zip, o).then(res => {
+                            console.log(`read_zip() resolving res base64`);
+                            resolve(res);
+                        })
+                    )
+                    .catch(error => {
+                        console.error(`xlsx-style .read_zip(base64) encountered error: ${error}`);
+                        reject(error);
+                    });
+                break;
+            case "binary":
+            case "array":
+                zip.loadAsync(d, {base64: false})
+                    .then(() =>
+                        parse_zip(zip, o).then(res2 => {
+                            console.log(`read_zip() resolving res2 binary/array`);
+                            resolve(res2);
+                        })
+                    )
+                    .catch(error => {
+                        console.error(`xlsx-style .read_zip(array) encountered error: ${error}`);
+                        reject(error);
+                    });
+                break;
+            case "buffer":
+                zip.loadAsync(d)
+                    .then(() =>
+                        parse_zip(zip, o).then(res3 => {
+                            console.log(`read_zip() resolving res3 buffer`);
+                            resolve(res3);
+                        })
+                    )
+                    .catch(error => {
+                        console.error(`xlsx-style .read_zip(buffer) encountered error: ${error}`);
+                        reject(error);
+                    });
+                break;
+            case "file":
+                zip.loadAsync(d = _fs.readFileSync(data))
+                    .then(() =>
+                        parse_zip(zip, o).then(res4=>{
+                        console.log(`read_zip() resolving res4 file`);
+                        resolve(res4);
+                        })
+                    )
+                    .catch(error => {
+                        console.error(`xlsx-style .read_zip(file) encountered error: ${error}`);
+                        reject(error);
+                    });
+                break;
+            default:
+                throw new Error("Unrecognized type " + o.type);
+        }
+    }));
 }
 
 function readSync(data, opts) {
-	var zip, d = data, isfile = false, n;
-	var o = opts||{};
-	if(!o.type) o.type = (has_buf && Buffer.isBuffer(data)) ? "buffer" : "base64";
-	if(o.type == "file") { isfile = true; o.type = "buffer"; d = _fs.readFileSync(data); }
-	switch((n = firstbyte(d, o))) {
-		case 0xD0:
-			if(isfile) o.type = "file";
-			return parse_xlscfb(CFB.read(data, o), o);
-		case 0x09: return parse_xlscfb(s2a(o.type === 'base64' ? Base64.decode(data) : data), o);
-		case 0x3C: return parse_xlml(d, o);
-		case 0x50:
-			if(isfile) o.type = "file";
-			return read_zip(data, opts);
-		default: throw new Error("Unsupported file " + n);
-	}
+    var zip, d = data, isfile = false, n;
+    var o = opts || {};
+    if (!o.type) o.type = (has_buf && Buffer.isBuffer(data)) ? "buffer" : "base64";
+    if (o.type == "file") {
+        isfile = true;
+        o.type = "buffer";
+        d = _fs.readFileSync(data);
+    }
+    switch ((n = firstbyte(d, o))) {
+        case 0xD0:
+            if (isfile) o.type = "file";
+            return parse_xlscfb(CFB.read(data, o), o);
+        case 0x09:
+            return parse_xlscfb(s2a(o.type === 'base64' ? Base64.decode(data) : data), o);
+        case 0x3C:
+            return parse_xlml(d, o);
+        case 0x50:
+            if (isfile) o.type = "file";
+            return read_zip(data, opts);
+        default:
+            throw new Error("Unsupported file " + n);
+    }
 }
 
 function readFileSync(data, opts) {
-	var o = opts||{}; o.type = 'file'
-  var wb = readSync(data, o);
-  wb.FILENAME = data;
-	return wb;
+    var o = opts || {};
+    o.type = 'file'
+    var wb = readSync(data, o);
+    wb.FILENAME = data;
+    return wb;
 }
 function write_zip_type(wb, opts, filename) {
 	var o = opts||{};
@@ -11852,7 +12086,7 @@ function writeFileSync(wb, filename, opts) {
 		case '.xls': o.bookType = 'xls'; break;
 		case '.xml': o.bookType = 'xml'; break;
 	}}
-	return writeSync(wb, o, filename);
+	return writeAsync(wb, o, filename);
 }
 
 function decode_row(rowstr) { return parseInt(unfix_row(rowstr),10) - 1; }
@@ -12533,7 +12767,7 @@ XLSX.parse_zip = parse_zip;
 XLSX.read = readSync; //xlsread
 XLSX.readFile = readFileSync; //readFile
 XLSX.readFileSync = readFileSync;
-XLSX.writeAndSaveAsync = writAsync;
+XLSX.writeAndSaveAsync = writeAsync;
 XLSX.writeFile = writeFileSync;
 XLSX.writeFileSync = writeFileSync;
 XLSX.utils = utils;
