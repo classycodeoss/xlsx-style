@@ -136,10 +136,10 @@ function write_wb_xml(wb, opts) {
 	o[o.length] = "</sheets>";
 
   var hasPrintHeaders = false;
-  for(var i = 0; i != wb.SheetNames.length; ++i) {
+  for(var i = 0; i !== wb.SheetNames.length; ++i) {
     var sheetName = wb.SheetNames[i];
-    var sheet = wb.Sheets[sheetName]
-    if (sheet['!printHeader']) {
+    var sheet = wb.Sheets[sheetName];
+    if (sheet && sheet['!printHeader']) {
       if (sheet['!printHeader'].length !== 2) {
         throw "!printHeaders must be an array of length 2: "+sheet['!printHeader'];
 
@@ -151,10 +151,10 @@ function write_wb_xml(wb, opts) {
 
   if (hasPrintHeaders) {
     o[o.length] = '<definedNames>';
-    for(var i = 0; i != wb.SheetNames.length; ++i) {
+    for(var i = 0; i !== wb.SheetNames.length; ++i) {
       var sheetName = wb.SheetNames[i];
-      var sheet = wb.Sheets[sheetName]
-      if (sheet['!printHeader']) {
+      var sheet = wb.Sheets[sheetName];
+      if (sheet && sheet['!printHeader']) {
           var printHeader = sheet['!printHeader'];
 
         var range = "'" + sheetName + "'!$" + printHeader[0] + ":$" + printHeader[1];

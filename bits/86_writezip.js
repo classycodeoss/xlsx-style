@@ -10,6 +10,7 @@ function add_rels(rels, rId, f, type, relobj) {
 }
 
 function write_zip(wb, opts) {
+	
 	if(wb && !wb.SSF) {
 		wb.SSF = SSF.get_table();
 	}
@@ -69,14 +70,14 @@ function write_zip(wb, opts) {
 		add_rels(opts.wbrels, ++rId, "sharedStrings." + wbext, RELS.SST);
 	}
 
-	/* TODO: something more intelligent with themes */
-
+	
+	
 	f = "xl/theme/theme1.xml";
-  zip.file(f, write_theme(opts));
+    zip.file(f, write_theme(opts));
 	ct.themes.push(f);
 	add_rels(opts.wbrels, ++rId, "theme/theme1.xml", RELS.THEME);
 
-	/* TODO: something more intelligent with styles */
+	
 
 	f = "xl/styles." + wbext;
 	zip.file(f, write_sty(wb, f, opts));

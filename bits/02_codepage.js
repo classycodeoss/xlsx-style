@@ -7,7 +7,9 @@ function reset_cp() { set_cp(1200); }
 var set_cp = function(cp) { current_codepage = cp; };
 
 function char_codes(data) { var o = []; for(var i = 0, len = data.length; i < len; ++i) o[i] = data.charCodeAt(i); return o; }
-var debom_xml = function(data) { return data; };
+var debom_xml = function(data) {
+	return data;
+};
 
 var _getchar = function _gc1(x) { return String.fromCharCode(x); };
 if(typeof cptable !== 'undefined') {
