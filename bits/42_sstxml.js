@@ -143,7 +143,13 @@ function parse_si(x, opts) {
 	var y;
 	/* 18.4.12 t ST_Xstring (Plaintext String) */
 	if(x.charCodeAt(1) === 116) {
-		z.t = utf8read(unescapexml(x.substr(x.indexOf(">")+1).split(/<\/t>/)[0]));
+		const cutOutStr = x.substr(x.indexOf(">")+1).split(/<\/t>/);
+		const espacedCutOutStr = unescapexml(cutOutStr[0]);
+		// TODO utf8read is buggy if there is a UTF-8 character like 'ü', this case is not implemented correctly, ignoring the utf8 read for now
+		//  const convertedStr = utf8read(espacedCutOutStr);
+		const convertedStr = espacedCutOutStr;
+		console.log(`.parse_si(raw: ${espacedCutOutStr}, converted: ${convertedStr}`);
+		z.t = convertedStr;
 		z.r = x;
 		if(html) z.h = z.t;
 	}
